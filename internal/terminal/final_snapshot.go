@@ -11,8 +11,8 @@ import (
 const sgrReset = "\x1b[0m"
 
 type finalSnapshot struct {
-	title string
-	lines []string
+	title frameLine
+	lines []frameLine
 }
 
 func (display *InteractiveTerminal) finalSnapshots(
@@ -64,23 +64,20 @@ func (display *InteractiveTerminal) finalResultsByTransfer(
 func newFinalSnapshot(transfer Transfer, result runsupervisor.TransferResult,
 	lines []frameLine,
 ) finalSnapshot {
-	body := make([]string, len(lines))
-	for index, line := range lines {
-		body[index] = line.styled
-	}
 	return finalSnapshot{
-		title: fmt.Sprintf("[transfer %d | network %s | exit=%d signal=%d]",
-			transfer.number.Value(), transfer.network, result.ExitCode, result.Signal),
-		lines: body,
+		title: frameLine{kind: paneTitleFrameLine, text: fmt.Sprintf(
+			"[transfer %d | network %s | exit=%d signal=%d]",
+			transfer.number.Value(), transfer.network, result.ExitCode, result.Signal)},
+		lines: append([]frameLine(nil), lines...),
 	}
 }
 
 func serializeFinalSnapshots(snapshots []finalSnapshot) []byte {
 	var output strings.Builder
 	for _, snapshot := range snapshots {
-		writeResetLine(&output, snapshot.title)
+		writeResetLine(&output, styledFrameLine(snapshot.title))
 		for _, line := range snapshot.lines {
-			writeResetLine(&output, line)
+			writeResetLine(&output, styledFrameLine(line))
 		}
 	}
 	return []byte(output.String())
