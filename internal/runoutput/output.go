@@ -97,22 +97,18 @@ func (completion *Completion) forward(source eventSource, logs rawLogWriter, dis
 		notify(requestTermination)
 	}
 	displayActive := true
-	displayStarted := false
 	logsActive := logs != nil
+	if err := display.Begin(); err != nil {
+		result.displayError = errors.Join(errors.New("begin run display"), err)
+		displayActive = false
+		requestStop()
+	}
 	for {
 		event, err := source.Next()
 		if err != nil {
 			result.readError = fmt.Errorf("read supervisor output before final: %w", err)
 			requestStop()
 			return
-		}
-		if !displayStarted {
-			displayStarted = true
-			if err := display.Begin(); err != nil {
-				result.displayError = errors.Join(errors.New("begin run display"), err)
-				displayActive = false
-				requestStop()
-			}
 		}
 		if event.Kind() == runsupervisor.EventFinal {
 			result.final = event.Final()

@@ -9,7 +9,7 @@ import (
 	"github.com/ZhuzhuNo3/transferlanes/internal/transfernumber"
 )
 
-func TestRunSessionStartsForwarderBeforePotentiallyBlockingDisplayDriver(t *testing.T) {
+func TestRunSessionBeginsDisplayBeforeReadingSupervisorEvents(t *testing.T) {
 	client := newSessionClientRecorder()
 	display := newBlockingBeginDisplay()
 	t.Cleanup(display.phase.Release)
@@ -22,9 +22,14 @@ func TestRunSessionStartsForwarderBeforePotentiallyBlockingDisplayDriver(t *test
 			inbox: newTerminationInbox()}).run()
 	}()
 
-	waitForSessionPhase(t, client.nextStarted, "event forwarding started")
 	waitForSessionPhase(t, display.phase.reached, "display Begin entered")
+	select {
+	case <-client.nextStarted:
+		t.Fatal("supervisor event read started before display Begin completed")
+	default:
+	}
 	display.phase.Release()
+	waitForSessionPhase(t, client.nextStarted, "event forwarding started")
 	result := waitForSessionResult(t, done, "blocked display startup")
 	if _, ok := result.Final(); !ok {
 		t.Fatal("Final was not preserved")
