@@ -16,7 +16,7 @@ func TestFinalWeightsUseManualSelectionWithoutMeasuring(t *testing.T) {
 	measurer := &recordingWeightMeasurer{}
 	directory := &TransferDirectory{weights: measurer}
 
-	weights, owner, err := directory.finalWeights(context.Background(), nil, request, nil, source)
+	weights, owner, err := directory.finalWeights(context.Background(), nil, request, nil)
 	if err != nil || owner != nil || measurer.calls != 0 {
 		t.Fatalf("manual weights err=%v owner=%v measure calls=%d", err, owner, measurer.calls)
 	}
@@ -42,7 +42,7 @@ func TestFinalWeightsPreserveAutomaticMeasurementValues(t *testing.T) {
 	}}
 	directory := &TransferDirectory{weights: measurer}
 
-	weights, owner, err := directory.finalWeights(context.Background(), nil, request, nil, source)
+	weights, owner, err := directory.finalWeights(context.Background(), nil, request, nil)
 	if err != nil || owner != nil || measurer.calls != 1 {
 		t.Fatalf("automatic weights err=%v owner=%v measure calls=%d", err, owner, measurer.calls)
 	}
@@ -78,7 +78,7 @@ func TestFinalWeightsRejectInvalidAutomaticMeasurementSet(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			measurer := &recordingWeightMeasurer{weights: test.weights}
 			directory := &TransferDirectory{weights: measurer}
-			_, owner, err := directory.finalWeights(context.Background(), nil, request, nil, source)
+			_, owner, err := directory.finalWeights(context.Background(), nil, request, nil)
 			if err == nil || owner != nil || measurer.calls != 1 {
 				t.Fatalf("automatic weights err=%v owner=%v measure calls=%d", err, owner, measurer.calls)
 			}
@@ -95,7 +95,7 @@ func TestFinalWeightsPreserveAutomaticMeasurementOwnerOnFailure(t *testing.T) {
 	directory := &TransferDirectory{weights: measurer}
 
 	_, gotOwner, err := directory.finalWeights(context.Background(), nil,
-		validAutomaticRequest(t, source), nil, source)
+		validAutomaticRequest(t, source), nil)
 	if !errors.Is(err, wantErr) || gotOwner != owner || measurer.calls != 1 {
 		t.Fatalf("automatic failure err=%v owner=%v measure calls=%d", err, gotOwner, measurer.calls)
 	}
@@ -155,7 +155,7 @@ type recordingWeightMeasurer struct {
 }
 
 func (measurer *recordingWeightMeasurer) measure(context.Context, *hostnetwork.Session, Request,
-	resolverGroup, string,
+	resolverGroup,
 ) ([]sourcefiles.TransferWeight, supervisedProcesses, error) {
 	measurer.calls++
 	return measurer.weights, measurer.owner, measurer.err

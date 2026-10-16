@@ -228,6 +228,7 @@ run_special_tests() {
   write_special_targets "${expected}"
   set +e
   TRANSFERLANES_FILEVIEWS_ROOTINTEGRATION=1 TRANSFERLANES_TEST_TRANSFERLANES="${run_root}/transferlanes-native" \
+    TRANSFERLANES_TEST_TRANSFERCHILD="${run_root}/transferchild-native" \
     GOMAXPROCS=4 go test -json -count=1 -p 1 -timeout="${ROOT_TEST_TIMEOUT}" \
       -tags=rootintegration,protocolacceptance -run "${pattern}" \
       "${special_packages[@]}" | tee "${events}"
@@ -263,6 +264,10 @@ run_root_integration() {
     --development-modified "${development_modified}"
   require_elf_machine "${transferlanes_binary}" "$(elf_machine_for_goarch "${native_arch}")" \
     'native transferlanes'
+  local transferchild_binary="${run_root}/transferchild-native"
+  go build -o "${transferchild_binary}" ./test/transferchild
+  require_elf_machine "${transferchild_binary}" "$(elf_machine_for_goarch "${native_arch}")" \
+    'native transferchild'
   printf 'default phase: privileged acceptance\n'
   run_special_tests
   if pgrep -x bindfs >/dev/null; then

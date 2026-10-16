@@ -22,7 +22,7 @@ func runSupervisorMeasurements(ctx context.Context, live *rundirectory.LiveRun,
 	network *hostnetwork.Session, transferCount int,
 ) runsupervisor.Final {
 	window, windowErr := throughput.NewSettings(os.Getenv(supervisorMeasureEnv), rootMeasureDuration)
-	targets, resolverSet, targetErr := supervisorMeasureTargets(ctx, network, transferCount, os.Getenv(supervisorWorkDirEnv))
+	targets, resolverSet, targetErr := supervisorMeasureTargets(ctx, network, transferCount)
 	if resolverSet != nil {
 		defer closeRunSupervisorResolverSet(resolverSet)
 	}
@@ -51,9 +51,7 @@ func runSupervisorMeasurements(ctx context.Context, live *rundirectory.LiveRun,
 	return finishRunSupervisorOwners(live, network, final, errors.Join(targetErr, windowErr, measureErr))
 }
 
-func supervisorMeasureTargets(ctx context.Context, network *hostnetwork.Session, count int,
-	workDir string,
-) ([]throughput.NamespaceExecution, *namespaceresolvers.NamespaceResolverSet, error) {
+func supervisorMeasureTargets(ctx context.Context, network *hostnetwork.Session, count int) ([]throughput.NamespaceExecution, *namespaceresolvers.NamespaceResolverSet, error) {
 	resolverSet, err := openRunSupervisorResolverSet(ctx, network, count)
 	if err != nil {
 		return nil, nil, err
@@ -66,7 +64,7 @@ func supervisorMeasureTargets(ctx context.Context, network *hostnetwork.Session,
 			closeRunSupervisorResolverSet(resolverSet)
 			return nil, nil, accessErr
 		}
-		targets[index], err = throughput.NewNamespaceExecution(id, workDir, resolver,
+		targets[index], err = throughput.NewNamespaceExecution(id, resolver,
 			supervisorChildEnvironment())
 		if err != nil {
 			closeRunSupervisorResolverSet(resolverSet)

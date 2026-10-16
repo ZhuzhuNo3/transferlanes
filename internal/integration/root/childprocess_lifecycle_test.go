@@ -57,7 +57,11 @@ func TestPlainChildKeepsPipeStreamsSeparateAndReportsSiblingFailure(t *testing.T
 		var evidence rootPlainEvidence
 		readRunSupervisorJSON(t, filepath.Join(scenario.markers,
 			fmt.Sprintf("plain-%d.json", number)), &evidence)
-		if evidence.WorkingDirectory != scenario.markers ||
+		callerDirectory, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if evidence.WorkingDirectory != callerDirectory ||
 			evidence.Resolver != "nameserver 192.0.2.53\n" || !evidence.ResolverReadOnly ||
 			!evidence.StdinEOF || evidence.StdoutTTY || evidence.StderrTTY ||
 			!evidence.TemporaryIPv4 {
@@ -255,8 +259,12 @@ func TestPTYChildAppliesResizeAndInputBeforeReportingResult(t *testing.T) {
 	}
 	var evidence rootPTYEvidence
 	readRunSupervisorJSON(t, filepath.Join(scenario.markers, "transfer-1.json"), &evidence)
+	callerDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if evidence.Cols != 101 || evidence.Rows != 47 || evidence.Input != "exact-input\n" ||
-		evidence.WorkingDirectory != scenario.markers || evidence.Resolver != "nameserver 192.0.2.53\n" ||
+		evidence.WorkingDirectory != callerDirectory || evidence.Resolver != "nameserver 192.0.2.53\n" ||
 		!evidence.ResolverReadOnly || !evidence.TemporaryIPv4 || evidence.PID != evidence.PGID ||
 		evidence.PID != evidence.SID {
 		t.Fatalf("PTY/namespace evidence = %#v", evidence)

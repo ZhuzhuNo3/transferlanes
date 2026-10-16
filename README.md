@@ -105,6 +105,12 @@ to separate Transfer Lanes options from the transfer command. Transfer Lanes rep
 placeholder and executes the resulting argument vector directly, without
 invoking a shell or rewriting tool-specific arguments.
 
+Each transfer command inherits the working directory from which `transferlanes`
+was started. Relative configuration paths such as `.ossconfig-ali` and relative
+output paths such as `ossutil_output` are resolved there by the transfer command.
+The `{}` argument becomes the absolute path to that transfer's read-only view;
+the view is separate from the working directory.
+
 For example, automatic weights can be used with an AWS CLI S3 transfer:
 
 ```bash

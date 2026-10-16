@@ -1806,9 +1806,16 @@ func runPublicTransferLanesPTYCommand(arguments []string,
 func runPublicTransferLanesPTYCommandWithEnvironment(arguments, environment []string,
 	action publicPTYAction,
 ) (string, error) {
+	return runPublicTransferLanesPTYCommandInDirectory(arguments, environment, "", action)
+}
+
+func runPublicTransferLanesPTYCommandInDirectory(arguments, environment []string, directory string,
+	action publicPTYAction,
+) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, os.Getenv("TRANSFERLANES_TEST_TRANSFERLANES"), arguments...)
+	command.Dir = directory
 	command.Env = environmentOverrides(os.Environ(), environment)
 	master, slave, err := pty.Open()
 	if err != nil {
@@ -1853,10 +1860,18 @@ func runPublicTransferLanesPipes(t *testing.T, arguments []string) (string, stri
 func runPublicTransferLanesPipesWithAction(t *testing.T, arguments []string,
 	action func(*exec.Cmd) error,
 ) (string, string, error) {
+	return runPublicTransferLanesPipesInDirectory(t, arguments, "", nil, action)
+}
+
+func runPublicTransferLanesPipesInDirectory(t *testing.T, arguments []string, directory string,
+	environment []string, action func(*exec.Cmd) error,
+) (string, string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, os.Getenv("TRANSFERLANES_TEST_TRANSFERLANES"), arguments...)
+	command.Dir = directory
+	command.Env = environmentOverrides(os.Environ(), environment)
 	command.Stdin = strings.NewReader("")
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr

@@ -45,12 +45,14 @@ func TestExecuteRoutesPublicHelpListAndVersionWithoutTouchingOtherUseCases(t *te
 	for _, test := range []struct {
 		name     string
 		argv     []string
+		helpPage HelpPage
+		help     bool
 		wantText string
 		wantList int
 	}{
-		{name: "root help", argv: []string{"--help"}, wantText: RootHelpPage.Text()},
-		{name: "list help", argv: []string{"list", "--help"}, wantText: ListHelpPage.Text()},
-		{name: "run help", argv: []string{"run", "--help"}, wantText: RunHelpPage.Text()},
+		{name: "root help", argv: []string{"--help"}, help: true, helpPage: RootHelpPage},
+		{name: "list help", argv: []string{"list", "--help"}, help: true, helpPage: ListHelpPage},
+		{name: "run help", argv: []string{"run", "--help"}, help: true, helpPage: RunHelpPage},
 		{name: "list", argv: []string{"list"}, wantText: "LOCAL_IP  IFACE  ROUTE_TABLE  GATEWAY  LOCAL_STATUS\n", wantList: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -60,10 +62,17 @@ func TestExecuteRoutesPublicHelpListAndVersionWithoutTouchingOtherUseCases(t *te
 			var stdout, stderr bytes.Buffer
 			code := execute(test.argv, strings.NewReader(""), &stdout, &stderr,
 				listing, runner, func() (string, error) { versionCalls++; return "version", nil })
-			if code != 0 || stdout.String() != test.wantText || stderr.Len() != 0 ||
+			if code != 0 || stderr.Len() != 0 ||
 				listing.calls != test.wantList || runner.calls != 0 || versionCalls != 0 {
 				t.Fatalf("exit=%d stdout=%q stderr=%q list/run/version=%d/%d/%d", code,
 					stdout.String(), stderr.String(), listing.calls, runner.calls, versionCalls)
+			}
+			if test.help {
+				if strings.TrimSpace(stdout.String()) == "" || stdout.String() != test.helpPage.Text() {
+					t.Fatalf("help output does not match %s page: %q", test.helpPage, stdout.String())
+				}
+			} else if stdout.String() != test.wantText {
+				t.Fatalf("stdout=%q, want %q", stdout.String(), test.wantText)
 			}
 		})
 	}

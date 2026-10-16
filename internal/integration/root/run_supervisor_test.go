@@ -420,7 +420,7 @@ func runContainmentSupervisorFixture(ctx context.Context, wire *runsupervisor.Ru
 		return runSupervisorProcessHandleCycles(ctx, owners.live, owners.network, processes.owner,
 			owners.count, os.Getenv(supervisorWorkDirEnv), processes.resolver)
 	}
-	commands, err := containmentSupervisorCommands(scenario, os.Getenv(supervisorWorkDirEnv),
+	commands, err := containmentSupervisorCommands(scenario,
 		processes.resolver, os.Getenv(supervisorMarkerEnv))
 	if err != nil {
 		return finishRunSupervisorOwners(owners.live, owners.network, runsupervisor.Final{}, err)
@@ -465,7 +465,7 @@ func runSupervisorProcessHandleCycles(ctx context.Context, live *rundirectory.Li
 
 type processHandleCycleCommandSet struct {
 	normal            childprocesses.Command
-	missingDirectory  childprocesses.Command
+	missingExecutable childprocesses.Command
 	nonExecutable     childprocesses.Command
 	brokenInterpreter childprocesses.Command
 	untilCancelled    childprocesses.Command
@@ -476,8 +476,8 @@ func processHandleCycleCommands(workDir string, resolver namespaceresolvers.Reso
 ) {
 	id, _ := transfernumber.New(1)
 	environment := supervisorChildEnvironment()
-	command := func(cwd string, argv []string) (childprocesses.Command, error) {
-		return childprocesses.NewCommand(id, cwd, resolver, argv, environment)
+	command := func(argv []string) (childprocesses.Command, error) {
+		return childprocesses.NewCommand(id, resolver, argv, environment)
 	}
 	brokenExecutable := filepath.Join(workDir, "fd-cycle-broken-executable")
 	if err := os.WriteFile(brokenExecutable,
@@ -486,20 +486,19 @@ func processHandleCycleCommands(workDir string, resolver namespaceresolvers.Reso
 	}
 	var result processHandleCycleCommandSet
 	var err error
-	if result.normal, err = command(workDir, []string{"/bin/true"}); err != nil {
+	if result.normal, err = command([]string{"/bin/true"}); err != nil {
 		return processHandleCycleCommandSet{}, err
 	}
-	if result.missingDirectory, err = command(filepath.Join(workDir, "fd-cycle-missing-directory"),
-		[]string{"/bin/true"}); err != nil {
+	if result.missingExecutable, err = command([]string{filepath.Join(workDir, "fd-cycle-missing-executable")}); err != nil {
 		return processHandleCycleCommandSet{}, err
 	}
-	if result.nonExecutable, err = command(workDir, []string{workDir}); err != nil {
+	if result.nonExecutable, err = command([]string{workDir}); err != nil {
 		return processHandleCycleCommandSet{}, err
 	}
-	if result.brokenInterpreter, err = command(workDir, []string{brokenExecutable}); err != nil {
+	if result.brokenInterpreter, err = command([]string{brokenExecutable}); err != nil {
 		return processHandleCycleCommandSet{}, err
 	}
-	result.untilCancelled, err = command(workDir,
+	result.untilCancelled, err = command(
 		[]string{"/bin/sh", "-c", "while :; do sleep 10; done"})
 	return result, err
 }
@@ -513,7 +512,7 @@ func runProcessHandleCycle(ctx context.Context, network *hostnetwork.Session,
 		return errors.Join(err, errors.New("normal completion failed"))
 	}
 	for name, command := range map[string]childprocesses.Command{
-		"missing working directory": commands.missingDirectory,
+		"missing executable target": commands.missingExecutable,
 		"non-executable target":     commands.nonExecutable,
 	} {
 		processes, startErr := processOwner.StartPlain(ctx, network, []childprocesses.Command{command})
@@ -770,68 +769,66 @@ func plainSupervisorCommands(scenario plainSupervisorScenario, workDir string,
 	transfer1, _ := transfernumber.New(1)
 	transfer2, _ := transfernumber.New(2)
 	environment := supervisorChildEnvironment()
-	command := func(id transfernumber.Number, cwd string, argv []string) (childprocesses.Command, error) {
-		return childprocesses.NewCommand(id, cwd, resolver, argv, environment)
+	command := func(id transfernumber.Number, argv []string) (childprocesses.Command, error) {
+		return childprocesses.NewCommand(id, resolver, argv, environment)
 	}
 	switch scenario {
 	case plainSupervisorBarrierFailure:
-		first, err := command(transfer1, workDir, plainChildCommandLine(executable, plainChildExit,
+		first, err := command(transfer1, plainChildCommandLine(executable, plainChildExit,
 			filepath.Join(markers, "should-not-run"), "0", "0"))
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		second, err := command(transfer2, filepath.Join(workDir, "missing-working-directory"),
-			plainChildCommandLine(executable, plainChildExit,
-				filepath.Join(markers, "also-should-not-run"), "0", "0"))
+		second, err := command(transfer2, []string{filepath.Join(workDir, "missing-executable")})
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}}, err
 	case plainSupervisorExecFailureOutput:
 		brokenExecutable, releasePath, done, err := brokenSupervisorExecutable(markers, true)
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		first, err := command(transfer1, workDir, []string{"/bin/sh", "-c",
+		first, err := command(transfer1, []string{"/bin/sh", "-c",
 			`trap '' INT TERM; : > "$1"; printf %s "$2"; printf x > "$3"; while :; do sleep 1; done`,
 			"transferlanes-exec-sibling", filepath.Join(markers, "exec-output.produced"),
 			"unique-exec-failure-output", releasePath})
 		if err != nil {
 			return preparedSupervisorCommands{}, abortSupervisorCommandPreparation(releasePath, done, err)
 		}
-		second, err := command(transfer2, workDir, []string{brokenExecutable})
+		second, err := command(transfer2, []string{brokenExecutable})
 		if err != nil {
 			return preparedSupervisorCommands{}, abortSupervisorCommandPreparation(releasePath, done, err)
 		}
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}, done: done,
 			releasePath: releasePath}, nil
 	case plainSupervisorPipes:
-		first, err := command(transfer1, workDir, plainChildCommandLine(executable, plainChildPlain,
+		first, err := command(transfer1, plainChildCommandLine(executable, plainChildPlain,
 			filepath.Join(markers, "plain-1.json"), "7",
 			base64.StdEncoding.EncodeToString([]byte("stdout-one\x00\r\n")),
 			base64.StdEncoding.EncodeToString([]byte("stderr-one\x1b[31m\n"))))
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		second, err := command(transfer2, workDir, plainChildCommandLine(executable, plainChildPlain,
+		second, err := command(transfer2, plainChildCommandLine(executable, plainChildPlain,
 			filepath.Join(markers, "plain-2.json"), "0",
 			base64.StdEncoding.EncodeToString([]byte("stdout-two\rprogress\n")),
 			base64.StdEncoding.EncodeToString([]byte("stderr-two\n"))))
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}}, err
 	case plainSupervisorSignals:
-		first, err := command(transfer1, workDir, containmentChildCommand(executable,
+		first, err := command(transfer1, containmentChildCommand(executable,
 			containmentChildSignals, filepath.Join(markers, "transfer-1")))
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		second, err := command(transfer2, workDir, containmentChildCommand(executable,
+		second, err := command(transfer2, containmentChildCommand(executable,
 			containmentChildSignals, filepath.Join(markers, "transfer-2")))
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}}, err
 	case plainSupervisorNormal:
-		first, err := command(transfer1, workDir, plainChildCommandLine(executable, plainChildPTYResize,
+		first, err := command(transfer1, plainChildCommandLine(executable, plainChildPTYResize,
 			filepath.Join(markers, "transfer-1.json"), "argument with spaces",
 			"$(touch "+filepath.Join(markers, "shell-side-effect")+")"))
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		second, err := command(transfer2, workDir, plainChildCommandLine(executable, plainChildExit,
+		second, err := command(transfer2, plainChildCommandLine(executable, plainChildExit,
 			filepath.Join(markers, "transfer-2.finished"), "7", "100"))
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}}, err
 	default:
@@ -849,27 +846,25 @@ func diagnosticSupervisorCommands(scenario diagnosticSupervisorScenario, workDir
 	transfer1, _ := transfernumber.New(1)
 	transfer2, _ := transfernumber.New(2)
 	environment := supervisorChildEnvironment()
-	command := func(id transfernumber.Number, cwd string, argv []string) (childprocesses.Command, error) {
-		return childprocesses.NewCommand(id, cwd, resolver, argv, environment)
+	command := func(id transfernumber.Number, argv []string) (childprocesses.Command, error) {
+		return childprocesses.NewCommand(id, resolver, argv, environment)
 	}
 	switch scenario {
 	case diagnosticSupervisorBarrier:
-		first, err := command(transfer1, workDir, diagnosticChildCommand(executable, diagnosticChildExit,
+		first, err := command(transfer1, diagnosticChildCommand(executable, diagnosticChildExit,
 			filepath.Join(markers, "should-not-run"), "0", "0"))
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		second, err := command(transfer2, filepath.Join(workDir, "missing-working-directory"),
-			diagnosticChildCommand(executable, diagnosticChildExit,
-				filepath.Join(markers, "also-should-not-run"), "0", "0"))
+		second, err := command(transfer2, []string{filepath.Join(workDir, "missing-executable")})
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}}, err
 	case diagnosticSupervisorPreExec:
-		first, err := command(transfer1, workDir, diagnosticChildCommand(executable, diagnosticChildExit,
+		first, err := command(transfer1, diagnosticChildCommand(executable, diagnosticChildExit,
 			filepath.Join(markers, "preexec-should-not-run"), "0", "0"))
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		second, err := command(transfer2, workDir, []string{workDir})
+		second, err := command(transfer2, []string{workDir})
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}}, err
 	case diagnosticSupervisorExec, diagnosticSupervisorExecOutput:
 		brokenExecutable, releasePath, done, err := brokenSupervisorExecutable(markers,
@@ -885,27 +880,27 @@ func diagnosticSupervisorCommands(scenario diagnosticSupervisorScenario, workDir
 				"transferlanes-exec-sibling", filepath.Join(markers, "exec-output.produced"),
 				"unique-exec-failure-output", releasePath}
 		}
-		first, err := command(transfer1, workDir, firstArgv)
+		first, err := command(transfer1, firstArgv)
 		if err != nil {
 			return preparedSupervisorCommands{}, abortSupervisorCommandPreparation(releasePath, done, err)
 		}
-		second, err := command(transfer2, workDir, []string{brokenExecutable})
+		second, err := command(transfer2, []string{brokenExecutable})
 		if err != nil {
 			return preparedSupervisorCommands{}, abortSupervisorCommandPreparation(releasePath, done, err)
 		}
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}, done: done,
 			releasePath: releasePath}, nil
 	case diagnosticSupervisorHelperFailure:
-		first, err := command(transfer1, workDir, diagnosticChildCommand(executable, diagnosticChildExit,
+		first, err := command(transfer1, diagnosticChildCommand(executable, diagnosticChildExit,
 			filepath.Join(markers, "transfer-1.finished"), "7", "100"))
 		if err != nil {
 			return preparedSupervisorCommands{}, err
 		}
-		second, err := command(transfer2, workDir, containmentChildCommand(executable,
+		second, err := command(transfer2, containmentChildCommand(executable,
 			containmentChildSignals, filepath.Join(markers, "transfer-2")))
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first, second}}, err
 	case diagnosticSupervisorHelperFlood:
-		first, err := command(transfer1, workDir, diagnosticChildCommand(executable,
+		first, err := command(transfer1, diagnosticChildCommand(executable,
 			diagnosticChildHelperFlood, filepath.Join(markers, "helper-stderr-drained")))
 		return preparedSupervisorCommands{commands: []childprocesses.Command{first}}, err
 	default:
@@ -980,7 +975,7 @@ func closeFiles(files ...*os.File) error {
 	return result
 }
 
-func containmentSupervisorCommands(scenario containmentSupervisorScenario, workDir string,
+func containmentSupervisorCommands(scenario containmentSupervisorScenario,
 	resolver namespaceresolvers.ResolverAccess, markers string,
 ) ([]childprocesses.Command, error) {
 	executable, err := os.Executable()
@@ -991,7 +986,7 @@ func containmentSupervisorCommands(scenario containmentSupervisorScenario, workD
 	transfer2, _ := transfernumber.New(2)
 	environment := supervisorChildEnvironment()
 	command := func(id transfernumber.Number, argv []string) (childprocesses.Command, error) {
-		return childprocesses.NewCommand(id, workDir, resolver, argv, environment)
+		return childprocesses.NewCommand(id, resolver, argv, environment)
 	}
 	switch scenario {
 	case containmentSupervisorSignals, containmentSupervisorBackpressure:

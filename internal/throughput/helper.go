@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -33,15 +32,14 @@ const (
 // target. Upload semantics remain owned by Tester in both host and namespace.
 type NamespaceExecution struct {
 	target      Target
-	cwd         string
 	resolver    namespaceresolvers.ResolverAccess
 	environment []string
 }
 
-func NewNamespaceExecution(id transfernumber.Number, workingDirectory string,
+func NewNamespaceExecution(id transfernumber.Number,
 	resolver namespaceresolvers.ResolverAccess, environment []string) (NamespaceExecution, error) {
 	target, err := NewCurrentNamespaceTarget(id)
-	if err != nil || resolver == nil || !filepath.IsAbs(workingDirectory) || filepath.Clean(workingDirectory) != workingDirectory {
+	if err != nil || resolver == nil {
 		return NamespaceExecution{}, errors.Join(errors.New("namespace throughput execution is invalid"), err)
 	}
 	if file, accessErr := resolver.Open(); accessErr != nil {
@@ -49,7 +47,7 @@ func NewNamespaceExecution(id transfernumber.Number, workingDirectory string,
 	} else {
 		_ = file.Close()
 	}
-	return NamespaceExecution{target: target, cwd: strings.Clone(workingDirectory), resolver: resolver,
+	return NamespaceExecution{target: target, resolver: resolver,
 		environment: append([]string(nil), environment...)}, nil
 }
 
@@ -91,7 +89,7 @@ func (tester *Tester) ObserveNamespaces(ctx context.Context, owner *childprocess
 			return nil, nil, errors.Join(errors.New("encode throughput helper request"), err)
 		}
 		argument := helperArgumentPrefix + base64.RawURLEncoding.EncodeToString(document)
-		commands[index], err = childprocesses.NewCommand(execution.target.transfer, execution.cwd,
+		commands[index], err = childprocesses.NewCommand(execution.target.transfer,
 			execution.resolver, []string{executable, argument}, execution.environment)
 		if err != nil {
 			return nil, nil, err

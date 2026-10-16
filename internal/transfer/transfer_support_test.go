@@ -314,7 +314,7 @@ type observedWeightMeasurer struct {
 }
 
 func (weights *observedWeightMeasurer) measure(_ context.Context, _ *hostnetwork.Session,
-	request Request, _ resolverGroup, _ string,
+	request Request, _ resolverGroup,
 ) ([]sourcefiles.TransferWeight, supervisedProcesses, error) {
 	if weights.err != nil {
 		return nil, weights.owner, weights.err

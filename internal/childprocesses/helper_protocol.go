@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	helperVersion        = uint8(5)
+	helperVersion        = uint8(6)
 	helperType           = "child-process"
 	maximumHelperPayload = 1024 * 1024
 )
@@ -30,7 +30,6 @@ type helperPayload struct {
 	ViewRunID        []byte   `json:"viewRunID,omitempty"`
 	ViewBaseName     []byte   `json:"viewBaseName,omitempty"`
 	Interactive      bool     `json:"interactive"`
-	WorkingDir       []byte   `json:"workingDirectory"`
 	Argv             [][]byte `json:"argv"`
 	Environment      [][]byte `json:"environment"`
 }
@@ -57,7 +56,6 @@ type helperRequest struct {
 	execChannel    descriptorIdentity
 	view           viewDescriptorIdentity
 	interactive    bool
-	cwd            string
 	argv           []string
 	environment    []string
 }
@@ -66,8 +64,8 @@ func helperRequestFromCommand(command Command, namespaceInode uint64,
 	inherited inheritedIdentity, interactive bool) helperRequest {
 	return helperRequest{transfer: command.transfer, namespaceInode: namespaceInode,
 		execChannel: inherited.execChannel, view: inherited.view,
-		interactive: interactive, cwd: command.cwd,
-		argv: command.Argv(), environment: command.Environment()}
+		interactive: interactive,
+		argv:        command.Argv(), environment: command.Environment()}
 }
 
 func encodeHelperRequest(request helperRequest) ([]byte, error) {
@@ -80,8 +78,8 @@ func encodeHelperRequest(request helperRequest) ([]byte, error) {
 	}
 	payload := helperPayload{Version: helperVersion, Type: helperType, Transfer: request.transfer.Value(),
 		NamespaceInode: request.namespaceInode, ExecChannelDev: request.execChannel.device,
-		ExecChannelInode: request.execChannel.inode, WorkingDir: []byte(request.cwd),
-		ViewDev: request.view.root.device, ViewInode: request.view.root.inode,
+		ExecChannelInode: request.execChannel.inode,
+		ViewDev:          request.view.root.device, ViewInode: request.view.root.inode,
 		ViewRunID: viewRunID, ViewBaseName: []byte(request.view.baseName),
 		Interactive: request.interactive,
 		Argv:        stringsToBytes(request.argv), Environment: stringsToBytes(request.environment)}
@@ -127,7 +125,7 @@ func decodeHelperRequest(reader io.Reader) (helperRequest, error) {
 			baseName: string(append([]byte(nil), payload.ViewBaseName...)),
 		},
 		interactive: payload.Interactive,
-		cwd:         string(append([]byte(nil), payload.WorkingDir...)), argv: bytesToStrings(payload.Argv),
+		argv:        bytesToStrings(payload.Argv),
 		environment: bytesToStrings(payload.Environment)}
 	if err := validateHelperRequest(request); err != nil {
 		return helperRequest{}, err
@@ -136,7 +134,7 @@ func decodeHelperRequest(reader io.Reader) (helperRequest, error) {
 }
 
 func validateHelperRequest(request helperRequest) error {
-	command := Command{transfer: request.transfer, cwd: request.cwd,
+	command := Command{transfer: request.transfer,
 		argv: request.argv, environment: request.environment}
 	if request.namespaceInode == 0 {
 		return fmt.Errorf("child helper namespace identity is invalid")
@@ -159,9 +157,6 @@ func validateHelperRequest(request helperRequest) error {
 		if err != nil {
 			return err
 		}
-		if request.cwd != viewPath {
-			return fmt.Errorf("child file-view working directory is not descriptor-bound")
-		}
 		viewArguments := 0
 		for _, argument := range request.argv {
 			if argument == viewPath {
@@ -171,10 +166,10 @@ func validateHelperRequest(request helperRequest) error {
 		if viewArguments != 1 {
 			return fmt.Errorf("child file-view argv binding is invalid")
 		}
-	} else if descriptorViewPath(request.cwd) || slices.ContainsFunc(request.argv, descriptorViewPath) {
+	} else if slices.ContainsFunc(request.argv, descriptorViewPath) {
 		return fmt.Errorf("child file-view path lacks inherited identity")
 	}
-	return validateCommandFields(command, viewPath)
+	return validateCommandFields(command)
 }
 
 func descriptorViewPath(value string) bool {

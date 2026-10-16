@@ -114,7 +114,7 @@ func (transfer *TransferDirectory) executeWithResolvers(ctx context.Context,
 	egresses map[transfernumber.Number]networkcatalog.Egress, snapshot sourcefiles.SourceSnapshot,
 	live *rundirectory.LiveRun, network *hostnetwork.Session, resolvers resolverGroup, result Result,
 ) Result {
-	weighted, measuring, err := transfer.finalWeights(ctx, network, request, resolvers, source.StableRoot())
+	weighted, measuring, err := transfer.finalWeights(ctx, network, request, resolvers)
 	if err != nil {
 		result.runErr = err
 		if measuring != nil {

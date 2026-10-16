@@ -14,7 +14,7 @@ func TestCommandOwnsExactArgvAndEnvironment(t *testing.T) {
 	id, _ := transfernumber.New(2)
 	argv := []string{"/bin/transfer", "argument with spaces", "$(not-a-shell)", string([]byte{0xff, 'x'})}
 	environment := []string{"PATH=/bin:/usr/bin", "TERM=xterm-256color", "VALUE=a b"}
-	command, err := NewCommand(id, "/work/view", testResolverAccess(t), argv, environment)
+	command, err := NewCommand(id, testResolverAccess(t), argv, environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,18 +41,16 @@ func testResolverAccess(t *testing.T) testResolverCapability {
 func TestCommandRejectsUnsafeProcessInputs(t *testing.T) {
 	id, _ := transfernumber.New(1)
 	cases := map[string]struct {
-		cwd       string
 		argv, env []string
 	}{
-		"relative cwd": {"relative", []string{"/bin/true"}, []string{"TERM=x"}},
-		"empty argv":   {"/work", nil, []string{"TERM=x"}},
-		"nul argv":     {"/work", []string{"/bin/true", "a\x00b"}, []string{"TERM=x"}},
-		"bad env":      {"/work", []string{"/bin/true"}, []string{"TERM=x", "TERM=y"}},
+		"empty argv": {nil, []string{"TERM=x"}},
+		"nul argv":   {[]string{"/bin/true", "a\x00b"}, []string{"TERM=x"}},
+		"bad env":    {[]string{"/bin/true"}, []string{"TERM=x", "TERM=y"}},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			command := Command{transfer: id, cwd: test.cwd, argv: test.argv, environment: test.env}
-			if err := validateCommandFields(command, ""); err == nil {
+			command := Command{transfer: id, argv: test.argv, environment: test.env}
+			if err := validateCommandFields(command); err == nil {
 				t.Fatal("unsafe process inputs were accepted")
 			}
 		})
@@ -66,7 +64,7 @@ func TestCommandRejectsUnavailableResolverCapability(t *testing.T) {
 		"closed": testResolverCapability{path: filepath.Join(t.TempDir(), "missing-resolver")},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := NewCommand(id, "/work", resolver, []string{"/bin/true"}, nil); err == nil {
+			if _, err := NewCommand(id, resolver, []string{"/bin/true"}, nil); err == nil {
 				t.Fatal("unavailable resolver capability was accepted")
 			}
 		})

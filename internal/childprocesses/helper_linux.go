@@ -65,9 +65,6 @@ func runInheritedHelper() error {
 	if err := installPrivateResolver(); err != nil {
 		return err
 	}
-	if err := os.Chdir(request.cwd); err != nil {
-		return fmt.Errorf("enter child working directory: %w", err)
-	}
 	executable, err := resolveExecutable(request.argv[0], request.environment)
 	if err != nil {
 		return err

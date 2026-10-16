@@ -21,7 +21,6 @@ const descriptorBoundViewAuthority = "/run/transferlanes"
 // Command is one immutable exact-argv transfer prepared for the complete group owner.
 type Command struct {
 	transfer    transfernumber.Number
-	cwd         string
 	resolver    namespaceresolvers.ResolverAccess
 	argv        []string
 	environment []string
@@ -40,12 +39,12 @@ type ViewAccess interface {
 // NewCommandWithExecChannel prepares an exact command with one caller-owned descriptor that is
 // handed through the namespace helper to the exact executable. ChildProcesses duplicates the
 // descriptor and never closes the caller's file.
-func NewCommandWithExecChannel(id transfernumber.Number, workingDirectory string, resolver namespaceresolvers.ResolverAccess,
+func NewCommandWithExecChannel(id transfernumber.Number, resolver namespaceresolvers.ResolverAccess,
 	argv, environment []string, channel *os.File) (Command, error) {
 	if channel == nil {
 		return Command{}, fmt.Errorf("child exec channel is absent")
 	}
-	command, err := NewCommand(id, workingDirectory, resolver, argv, environment)
+	command, err := NewCommand(id, resolver, argv, environment)
 	if err != nil {
 		return Command{}, err
 	}
@@ -53,8 +52,8 @@ func NewCommandWithExecChannel(id transfernumber.Number, workingDirectory string
 	return command, nil
 }
 
-func NewCommand(id transfernumber.Number, workingDirectory string, resolver namespaceresolvers.ResolverAccess, argv, environment []string) (Command, error) {
-	command := Command{transfer: id, cwd: strings.Clone(workingDirectory), resolver: resolver,
+func NewCommand(id transfernumber.Number, resolver namespaceresolvers.ResolverAccess, argv, environment []string) (Command, error) {
+	command := Command{transfer: id, resolver: resolver,
 		argv: cloneStrings(argv), environment: cloneStrings(environment)}
 	if err := validateCommand(command); err != nil {
 		return Command{}, err
@@ -62,7 +61,7 @@ func NewCommand(id transfernumber.Number, workingDirectory string, resolver name
 	return command, nil
 }
 
-// NewViewCommand binds cwd and the already-substituted argv path to one non-owning FileViews
+// NewViewCommand binds the already-substituted argv path to one non-owning FileViews
 // access capability. ChildProcesses owns only the exact descriptor duplicates it requests.
 func NewViewCommand(id transfernumber.Number, resolver namespaceresolvers.ResolverAccess, argv, environment []string,
 	view ViewAccess,
@@ -73,23 +72,10 @@ func NewViewCommand(id transfernumber.Number, resolver namespaceresolvers.Resolv
 	if view.TransferNumber() != id {
 		return Command{}, fmt.Errorf("child file-view transfer identity is invalid")
 	}
-	viewPath, err := DescriptorBoundViewPath(view.RunID(), view.TransferNumber(), view.BaseName())
-	if err != nil {
-		return Command{}, err
-	}
-	command := Command{transfer: id, cwd: viewPath, resolver: resolver,
+	command := Command{transfer: id, resolver: resolver,
 		argv: cloneStrings(argv), environment: cloneStrings(environment), view: view}
 	if err := validateCommand(command); err != nil {
 		return Command{}, err
-	}
-	viewArguments := 0
-	for _, argument := range command.argv {
-		if argument == viewPath {
-			viewArguments++
-		}
-	}
-	if viewArguments != 1 {
-		return Command{}, fmt.Errorf("child command must contain its descriptor-bound view exactly once")
 	}
 	return command, nil
 }
@@ -110,15 +96,22 @@ func DescriptorBoundViewPath(run runid.ID, id transfernumber.Number, baseName st
 }
 
 func (command Command) Transfer() transfernumber.Number { return command.transfer }
-func (command Command) WorkingDirectory() string        { return command.cwd }
 func (command Command) Argv() []string                  { return cloneStrings(command.argv) }
 func (command Command) Environment() []string           { return cloneStrings(command.environment) }
 
 func validateCommand(command Command) error {
-	viewPath := ""
 	if command.view != nil {
-		viewPath, _ = DescriptorBoundViewPath(command.view.RunID(), command.view.TransferNumber(),
+		viewPath, err := DescriptorBoundViewPath(command.view.RunID(), command.view.TransferNumber(),
 			command.view.BaseName())
+		if err != nil {
+			return err
+		}
+		if command.view.TransferNumber() != command.transfer {
+			return fmt.Errorf("child file-view transfer identity is invalid")
+		}
+		if count := countViewArguments(command.argv, viewPath); count != 1 {
+			return fmt.Errorf("child command must contain its descriptor-bound view exactly once")
+		}
 	}
 	if command.resolver == nil {
 		return errors.New("child resolver capability is unavailable")
@@ -130,14 +123,22 @@ func validateCommand(command Command) error {
 	if resolverErr != nil {
 		return fmt.Errorf("child resolver capability is invalid: %w", resolverErr)
 	}
-	return validateCommandFields(command, viewPath)
+	return validateCommandFields(command)
 }
 
-func validateCommandFields(command Command, descriptorViewPath string) error {
-	validWorkingDirectory := cleanAbsolutePath(command.cwd) ||
-		descriptorViewPath != "" && command.cwd == descriptorViewPath
-	if command.transfer.Value() == 0 || !validWorkingDirectory || len(command.argv) == 0 {
-		return fmt.Errorf("child command identity or paths are invalid")
+func countViewArguments(argv []string, viewPath string) int {
+	count := 0
+	for _, argument := range argv {
+		if argument == viewPath {
+			count++
+		}
+	}
+	return count
+}
+
+func validateCommandFields(command Command) error {
+	if command.transfer.Value() == 0 || len(command.argv) == 0 {
+		return fmt.Errorf("child command identity or argv is invalid")
 	}
 	if command.execChannel != nil && command.view != nil {
 		return fmt.Errorf("child command has conflicting inherited capabilities")

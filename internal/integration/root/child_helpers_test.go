@@ -243,7 +243,7 @@ func runSupervisorPlainChild(argv []string) int {
 		if !validPrivateViewAlias(argv[4]) {
 			return 2
 		}
-		evidencePath += "." + filepath.Base(filepath.Dir(cwd))
+		evidencePath += "." + filepath.Base(filepath.Dir(argv[4]))
 	}
 	fds, descriptorErr := inheritedDescriptorTargets()
 	evidence := rootPlainEvidence{WorkingDirectory: cwd, Resolver: string(resolver),

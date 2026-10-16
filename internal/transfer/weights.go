@@ -13,7 +13,7 @@ import (
 )
 
 type weightMeasurer interface {
-	measure(context.Context, *hostnetwork.Session, Request, resolverGroup, string) (
+	measure(context.Context, *hostnetwork.Session, Request, resolverGroup) (
 		[]sourcefiles.TransferWeight, supervisedProcesses, error)
 }
 
@@ -23,7 +23,7 @@ type throughputWeightMeasurer struct {
 }
 
 func (measurer throughputWeightMeasurer) measure(ctx context.Context, network *hostnetwork.Session,
-	request Request, resolvers resolverGroup, workingDirectory string,
+	request Request, resolvers resolverGroup,
 ) ([]sourcefiles.TransferWeight, supervisedProcesses, error) {
 	selectedNetworks := request.selectedNetworks()
 	targets := make([]throughput.NamespaceExecution, len(selectedNetworks))
@@ -32,7 +32,7 @@ func (measurer throughputWeightMeasurer) measure(ctx context.Context, network *h
 		if err != nil {
 			return nil, nil, err
 		}
-		target, err := throughput.NewNamespaceExecution(selected.transfer, workingDirectory,
+		target, err := throughput.NewNamespaceExecution(selected.transfer,
 			resolver, request.environment)
 		if err != nil {
 			return nil, nil, err
@@ -66,10 +66,10 @@ func (measurer throughputWeightMeasurer) measure(ctx context.Context, network *h
 }
 
 func (transfer *TransferDirectory) finalWeights(ctx context.Context, network *hostnetwork.Session,
-	request Request, resolvers resolverGroup, sourceRoot string,
+	request Request, resolvers resolverGroup,
 ) (sourcefiles.TransferWeights, supervisedProcesses, error) {
 	if len(request.automatic) != 0 {
-		weighted, uncontained, err := transfer.weights.measure(ctx, network, request, resolvers, sourceRoot)
+		weighted, uncontained, err := transfer.weights.measure(ctx, network, request, resolvers)
 		if err != nil {
 			return sourcefiles.TransferWeights{}, uncontained,
 				fmt.Errorf("measure automatic transfer weights: %w", err)
